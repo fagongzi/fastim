@@ -1,0 +1,68 @@
+{
+	"ImportPath": "github.com/fagongzi/fastim",
+	"GoVersion": "go1.6",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/CodisLabs/codis/pkg/utils/atomic2",
+			"Comment": "2.0.14",
+			"Rev": "3a771a8ccc896140856e248338bbb4388f8467d9"
+		},
+		{
+			"ImportPath": "github.com/CodisLabs/codis/pkg/utils/bytesize",
+			"Comment": "2.0.14",
+			"Rev": "3a771a8ccc896140856e248338bbb4388f8467d9"
+		},
+		{
+			"ImportPath": "github.com/CodisLabs/codis/pkg/utils/errors",
+			"Comment": "2.0.14",
+			"Rev": "3a771a8ccc896140856e248338bbb4388f8467d9"
+		},
+		{
+			"ImportPath": "github.com/CodisLabs/codis/pkg/utils/log",
+			"Comment": "2.0.14",
+			"Rev": "3a771a8ccc896140856e248338bbb4388f8467d9"
+		},
+		{
+			"ImportPath": "github.com/CodisLabs/codis/pkg/utils/trace",
+			"Comment": "2.0.14",
+			"Rev": "3a771a8ccc896140856e248338bbb4388f8467d9"
+		},
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v2.0.0-38-g003851b",
+			"Rev": "003851be7bb0694fe3cc457a49529a19388ee7cf"
+		},
+		{
+			"ImportPath": "github.com/fagongzi/goetty",
+			"Rev": "fb1e89456e13aeaaf79a4312fa4312bb87eeb08c"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/internal",
+			"Rev": "ce1a27ee3580899e78d08b978a07daed1bfe1773"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/redis",
+			"Rev": "ce1a27ee3580899e78d08b978a07daed1bfe1773"
+		},
+		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "7cc19b78d562895b13596ddce7aafb59dd789318"
+		},
+		{
+			"ImportPath": "github.com/satori/go.uuid",
+			"Comment": "v1.0.0",
+			"Rev": "f9ab0dce87d815821e221626b772e3475a0d2749"
+		},
+		{
+			"ImportPath": "github.com/toolkits/net",
+			"Rev": "d60cc35d68b7c7a319278619e961d8208d667277"
+		},
+		{
+			"ImportPath": "github.com/ugorji/go/codec",
+			"Rev": "a396ed22fc049df733440d90efe17475e3929ccb"
+		}
+	]
+}

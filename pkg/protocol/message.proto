@@ -1,0 +1,26 @@
+package protocol;
+
+enum RouterCMD {
+    SESSION_CLOSED  = 0;   // router -> backend
+    HEATBEAT        = 100; // client -> router
+}
+
+// client          router                backend
+// 
+
+// router -> backend, exclude RouterCMD
+message Message {
+    required int32  cmd              = 1; 
+    optional int32  biz              = 2; 
+    optional int32  product          = 3; 
+    optional int32  cliVersion       = 4; // client software version
+    optional int32  protocolVersion  = 5; // server protocol version
+    optional string sessionId        = 6; // session id
+    optional int64  seqId            = 7; // seq id in session, incrment by backend
+    optional bytes  data             = 8; // message data
+}
+
+// cmd: SESSION_CLOSED, router -> backend
+message SessionClosed {
+    required string sessionId = 1;
+}
