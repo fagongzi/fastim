@@ -50,9 +50,7 @@ func (self *TCPServer) Serve() error {
 		return err
 	}
 
-	defer func() {
-		self.registor.DeregisterRouter(self.cnf.Addr, registor.PROTOCOL_TCP)
-	}()
+	defer self.registor.DeregisterRouter(self.cnf.Addr, registor.PROTOCOL_TCP)
 
 	return self.tcpServer.Serve(self.doServe)
 }

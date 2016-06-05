@@ -2,6 +2,7 @@ package protocol;
 
 enum RouterCMD {
     SESSION_CLOSED  = 0;   // router -> backend
+    BIND_CHANGED    = 1;   // 
     HEATBEAT        = 100; // client -> router
 }
 
@@ -18,9 +19,4 @@ message Message {
     optional string sessionId        = 6; // session id
     optional int64  seqId            = 7; // seq id in session, incrment by backend
     optional bytes  data             = 8; // message data
-}
-
-// cmd: SESSION_CLOSED, router -> backend
-message SessionClosed {
-    required string sessionId = 1;
 }

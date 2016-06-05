@@ -7,6 +7,7 @@ import (
 	p "github.com/fagongzi/fastim/pkg/protocol"
 	"github.com/fagongzi/fastim/pkg/util"
 	"github.com/fagongzi/goetty"
+	proto "github.com/golang/protobuf/proto"
 	"strings"
 	"sync"
 	"time"
@@ -86,6 +87,11 @@ func (self *Service) deleteTransport(id string) {
 	delete(tm.transports, id)
 	self.routing.Unbind(id)
 	log.Infof("%s id<%s> unbind", util.MODULE_SERVICE, id)
+
+	// TODO: send to backend, confirm least one backend received message
+	closedNotify := &p.Message{}
+	closedNotify.Cmd = proto.Int32(p.RouterCMD_SESSION_CLOSED)
+	closedNotify.SessionId = proto.String(id)
 }
 
 func (self *Service) getTransport(id string) Transport {
