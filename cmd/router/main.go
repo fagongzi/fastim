@@ -4,12 +4,16 @@ import (
 	"flag"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"github.com/fagongzi/fastim/pkg/bind"
+	"github.com/fagongzi/fastim/pkg/conf"
 	l "github.com/fagongzi/fastim/pkg/log"
 	"github.com/fagongzi/fastim/pkg/registor"
 	"github.com/fagongzi/fastim/pkg/router"
 	"github.com/fagongzi/fastim/pkg/util"
+	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -20,6 +24,8 @@ var (
 	etcdAddr     = flag.String("etcd-addr", "http://127.0.0.1:2379", "etcd address, use ',' to splite.")
 	etcdPrefix   = flag.String("etcd-prefix", "/fastim", "etcd node prefix.")
 	redisAddr    = flag.String("redis-addr", "127.0.0.1:2379", "redis address, use ',' to splite.")
+	bucketSize   = flag.Int("bucket-size", 512, "how many buckets which used for store session are used in router")
+	maxRetry     = flag.Int("max-retry", 3, "how many times retry router to send session closed notify to backend")
 )
 
 var (
@@ -27,11 +33,13 @@ var (
 )
 
 var (
-	registorTTL            = flag.Uint64("registor-ttl", 10, "registor to etcd's ttl, unit: second.")
-	timeoutConnectBackend  = flag.Duration("timeout-connect-to-backend", time.Second*5, "timeout that how long to connect to backend.")
-	timeoutReadFromBackend = flag.Duration("timeout-read-from-backend", time.Second*30, "timeout that how long read from backend.")
-	timeoutWriteToBackend  = flag.Duration("timeout-write-to-backend", time.Second*30, "timeout that how long write to backend.")
-	timeoutIdle            = flag.Duration("timeout-idle", time.Hour, "timeout that how long redis connection idle.")
+	registorTTL    = flag.Uint64("registor-ttl", 10, "registor to etcd's ttl, unit: second.")
+	timeoutRead    = flag.Duration("timeout-read", time.Minute*5, "read timeout.")
+	timeoutConnect = flag.Duration("timeout-connect", time.Second*5, "connect timeout.")
+	timeoutWrite   = flag.Duration("timeout-write", time.Second*30, "write timeout.")
+	timeoutIdle    = flag.Duration("timeout-idle", time.Hour, "timeout that how long redis connection idle.")
+
+	timeoutWaitAck = flag.Duration("timeout-wait-ack", time.Second*30, "timeout that wait for sesison closed ack.")
 )
 
 var (
@@ -53,39 +61,57 @@ func main() {
 
 	util.Init()
 
-	cnf := &router.Conf{
-		Addr:         *addr,
-		InternalAddr: *internalAddr,
-		EtcdAddrs:    strings.Split(*etcdAddr, ","),
-		RedisAddrs:   strings.Split(*redisAddr, ","),
-		EtcdPrefix:   *etcdPrefix,
-		RegisterTTL:  *registorTTL,
+	cnf := &conf.RouterConf{
+		Etcd: &conf.EtcdConf{
+			EtcdAddrs:   strings.Split(*etcdAddr, ","),
+			EtcdPrefix:  *etcdPrefix,
+			RegisterTTL: *registorTTL,
+		},
+		Redis: &conf.RedisConf{
+			RedisAddrs:  strings.Split(*redisAddr, ","),
+			TimeoutIdle: *timeoutIdle,
+			MaxIdle:     *maxIdle,
+		},
+		Timeout: &conf.TimeoutConf{
+			TimeoutRead:    *timeoutRead,
+			TimeoutConnect: *timeoutConnect,
+			TimeoutWrite:   *timeoutWrite,
+		},
 
-		TimeoutConnectBackend:  *timeoutConnectBackend,
-		TimeoutReadFromBackend: *timeoutReadFromBackend,
-		TimeoutWriteToBackend:  *timeoutWriteToBackend,
-		TimeoutIdle:            *timeoutIdle,
-
-		MaxIdle: *maxIdle,
+		Addr:           *addr,
+		InternalAddr:   *internalAddr,
+		BucketSize:     *bucketSize,
+		MaxRetry:       *maxRetry,
+		TimeoutWaitAck: *timeoutWaitAck,
 
 		EnableEncrypt: *enableEncrypt,
 	}
 
 	log.Infof("%s start with conf <%+v>", util.MODULE_FRONTEND_TCP, cnf)
 
-	registor := registor.NewEtcdRegistor(cnf.EtcdAddrs, cnf.EtcdPrefix)
-	redisPool := bind.NewRedisPool(cnf.RedisAddrs, cnf.MaxIdle, cnf.TimeoutIdle)
+	registor := registor.NewEtcdRegistor(cnf.Etcd.EtcdAddrs, cnf.Etcd.EtcdPrefix)
+	redisPool := util.NewRedisPool(cnf.Redis.RedisAddrs, cnf.Redis.MaxIdle, cnf.Redis.TimeoutIdle)
 	routing, err := bind.NewRedisRouting(util.ConvertToIp(cnf.InternalAddr), redisPool, registor, true)
 	if err != nil {
 		log.WarnErrorf(err, "%s runtime failure", util.MODULE_FRONTEND_TCP)
 	}
 
-	go routing.Watch()
+	service := router.NewService(cnf, routing, registor)
+	svr := router.NewTCPServer(cnf, service)
 
-	service := router.NewService(cnf, routing)
-	svr := router.NewTCPServer(cnf, registor, service, router.NewBackends(cnf, service))
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, os.Kill)
+
+	go func() {
+		<-c
+		log.Infof("ctrl-c or SIGTERM found, router will exit")
+		svr.Stop()
+	}()
+
 	err = svr.Serve()
 	if err != nil {
 		log.PanicErrorf(err, "%s runtime failure", util.MODULE_FRONTEND_TCP)
+	} else {
+		log.Infof("Router is Exit.")
 	}
 }

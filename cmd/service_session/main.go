@@ -4,8 +4,10 @@ import (
 	"flag"
 	"github.com/CodisLabs/codis/pkg/utils/log"
 	"github.com/fagongzi/fastim/pkg/bind"
+	"github.com/fagongzi/fastim/pkg/conf"
 	l "github.com/fagongzi/fastim/pkg/log"
 	"github.com/fagongzi/fastim/pkg/model"
+	p "github.com/fagongzi/fastim/pkg/protocol"
 	"github.com/fagongzi/fastim/pkg/registor"
 	"github.com/fagongzi/fastim/pkg/service"
 	s "github.com/fagongzi/fastim/pkg/service_session"
@@ -34,14 +36,17 @@ var (
 	supportCmds        = flag.String("cmds", "", "support cmds, use ',' to splite")
 	supportMinProtocol = flag.Int("min-protocol", -1, "support min protocol version")
 	supportMaxProtocol = flag.Int("max-protocol", -1, "support min protocol version")
+
+	writeBufQueueSize = flag.Int("buf-write-queue", 1024, "write queue buf size")
+	delaySessionClose = flag.Int("delay-session-close", 60*10, "received sessin closed from router, delay seconds to process")
 )
 
 var (
-	registorTTL           = flag.Uint64("registor-ttl", 10, "registor to etcd's ttl, unit: second.")
-	timeoutConnectRouter  = flag.Duration("timeout-connect-to-router", time.Second*5, "timeout that how long to connect to backend.")
-	timeoutReadFromRouter = flag.Duration("timeout-read-from-router", time.Second*30, "timeout that how long read from backend.")
-	timeoutWriteToRouter  = flag.Duration("timeout-write-to-router", time.Second*30, "timeout that how long write to backend.")
-	timeoutIdle           = flag.Duration("timeout-idle", time.Hour, "timeout that how long redis connection idle.")
+	registorTTL    = flag.Uint64("registor-ttl", 10, "registor to etcd's ttl, unit: second.")
+	timeoutRead    = flag.Duration("timeout-read", time.Minute*5, "read timeout.")
+	timeoutConnect = flag.Duration("timeout-connect", time.Second*5, "connect timeout.")
+	timeoutWrite   = flag.Duration("timeout-write", time.Second*30, "write timeout.")
+	timeoutIdle    = flag.Duration("timeout-idle", time.Hour, "timeout that how long redis connection idle.")
 )
 
 var (
@@ -78,32 +83,41 @@ func main() {
 		MaxProtocol: *supportMaxProtocol,
 	}
 
-	conf := &service.Conf{
-		Addr:        *addr,
-		EtcdAddrs:   strings.Split(*etcdAddr, ","),
-		RedisAddrs:  strings.Split(*redisAddr, ","),
-		EtcdPrefix:  *etcdPrefix,
-		RegisterTTL: *registorTTL,
+	cnf := &conf.ServiceConf{
+		Etcd: &conf.EtcdConf{
+			EtcdAddrs:   strings.Split(*etcdAddr, ","),
+			EtcdPrefix:  *etcdPrefix,
+			RegisterTTL: *registorTTL,
+		},
+		Redis: &conf.RedisConf{
+			RedisAddrs:  strings.Split(*redisAddr, ","),
+			TimeoutIdle: *timeoutIdle,
+			MaxIdle:     *maxIdle,
+		},
+		Timeout: &conf.TimeoutConf{
+			TimeoutRead:    *timeoutRead,
+			TimeoutConnect: *timeoutConnect,
+			TimeoutWrite:   *timeoutWrite,
+		},
 
-		TimeoutConnectRouter:  *timeoutConnectRouter,
-		TimeoutReadFromRouter: *timeoutReadFromRouter,
-		TimeoutWriteToRouter:  *timeoutWriteToRouter,
-		TimeoutIdle:           *timeoutIdle,
-
-		MaxIdle: *maxIdle,
+		Addr:              *addr,
+		WriteBufQueueSize: *writeBufQueueSize,
+		DelaySessionClose: *delaySessionClose,
 	}
 
 	log.Infof("%s start with support <%+v>", util.MODULE_SERVICE, support)
 
-	r := registor.NewEtcdRegistor(conf.EtcdAddrs, conf.EtcdPrefix)
+	r := registor.NewEtcdRegistor(cnf.Etcd.EtcdAddrs, cnf.Etcd.EtcdPrefix)
 
-	redisPool := bind.NewRedisPool(conf.RedisAddrs, conf.MaxIdle, conf.TimeoutIdle)
-	routing, err := bind.NewRedisRouting(conf.Addr, redisPool, r, false)
+	redisPool := util.NewRedisPool(cnf.Redis.RedisAddrs, cnf.Redis.MaxIdle, cnf.Redis.TimeoutIdle)
+	routing, err := bind.NewRedisRouting(cnf.Addr, redisPool, r, false)
 	if err != nil {
 		log.WarnErrorf(err, "%s runtime failure", util.MODULE_SERVICE)
 	}
 
-	service := s.NewSessionService(conf, support, routing, r)
+	syncProtocol := p.NewRedisSyncProtocol(redisPool)
+	server := service.NewServer(cnf, support, routing, r, syncProtocol)
+	service := s.NewSessionService(cnf, server)
 
 	err = service.Serve()
 	if err != nil {

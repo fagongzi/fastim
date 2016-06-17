@@ -4,12 +4,6 @@ import (
 	"github.com/fagongzi/fastim/pkg/model"
 )
 
-const (
-	PROTOCOL_TCP              = "tcp"
-	PROTOCOL_HTTP_LONGPOLLING = "longpolling"
-	PROTOCOL_HTTP_WEBSOCKET   = "websocket"
-)
-
 type EvtType int
 type EvtSrc int
 
@@ -35,10 +29,11 @@ type Registor interface {
 	RegistorSupport(support *model.Support, ttl uint64) error
 	DeregistorSupport(support *model.Support) error
 
-	RegisterRouter(addr, protolcol string, ttl uint64) error
-	DeregisterRouter(addr, protolcol string) error
+	RegisterRouter(router *model.Router, ttl uint64) error
+	DeregisterRouter(router *model.Router) error
 
 	GetSupports() ([]*model.Support, error)
 
-	Watch(evtCh chan *Evt, stopCh chan bool) error
+	RegistorWatchHandler(evtSrc EvtSrc, evtType EvtType, handler func(evt *Evt))
+	Watch(stopCh chan bool) error
 }

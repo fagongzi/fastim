@@ -1,10 +1,34 @@
 package protocol;
 
 enum RouterCMD {
-    SESSION_CLOSED  = 0;   // router -> backend
-    BIND_CHANGED    = 1;   // 
-    HEATBEAT        = 100; // client -> router
+    SESSION_CLOSED           = 0;   // router -> backend 
+    SESSION_CLOSED_COMPLETE  = 1;   // backend -> router
+    CHANGE_ROUTER            = 10;  // router -> client
+    HEATBEAT                 = 99; // client -> router
 }
+
+enum BaseBiz {
+    SESSION = 1;
+    FRIENDS = 2;
+    MESSAGE = 3;
+    GROUP   = 4;
+}
+
+enum BaseCMD {
+    // ack
+    ACK           = 100; // backend -> client
+
+    // sync protocol about
+    NTY_SYNC      = 101; // backend -> client
+    REQ_SYNC      = 102; // client -> backend
+    RSP_SYNC      = 103; // backend -> client
+
+    // session about
+    REQ_LOGIN     = 200; // client -> backend
+    RSP_LOGIN     = 201; // backend -> client
+}
+
+
 
 // client          router                backend
 // 
@@ -15,8 +39,9 @@ message Message {
     optional int32  biz              = 2; 
     optional int32  product          = 3; 
     optional int32  cliVersion       = 4; // client software version
-    optional int32  protocolVersion  = 5; // server protocol version
-    optional string sessionId        = 6; // session id
-    optional int64  seqId            = 7; // seq id in session, incrment by backend
-    optional bytes  data             = 8; // message data
+    optional int32  cliSeqId         = 5; // client seqId, incrment by client
+    optional int32  protocolVersion  = 6; // server protocol version
+    optional string sessionId        = 7; // session id
+    optional string msgId            = 8; // uniq id with message
+    optional bytes  data             = 9; // message data
 }

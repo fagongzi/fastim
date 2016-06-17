@@ -52,6 +52,10 @@ func (self *Support) protocolMatches(msg *p.Message) bool {
 	return pv >= self.MinProtocol && pv <= self.MaxProtocol
 }
 
+func (self *Support) SupportBiz(biz int) bool {
+	return self.BizList == nil || inArray(self.BizList, biz)
+}
+
 func inArray(arr []int, target int) bool {
 	for _, v := range arr {
 		if v == target {

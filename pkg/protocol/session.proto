@@ -1,0 +1,38 @@
+package protocol;
+
+enum Equiment {
+    PC      = 1;
+    WEB     = 2;
+    ANDROID = 3;
+    IOS     = 4;
+}
+
+enum Status {
+    ONLINE  = 1;
+    OFFLINE = 2;
+}
+
+message LoginReq {
+    required string   name     = 1;
+    required string   password = 2;
+    required Equiment equiment = 3;
+    optional Status   status   = 4 [default = ONLINE];
+}
+
+message LoginRsp {
+    required int32  code    = 1 [default = 0]; // error code
+    optional string token   = 2; // session token
+    optional int64  timeout = 3; // token timeout
+}
+
+// backend -> client  when client received this message, the session is closed by backend, client should be disconnect the connection
+message OfflineNotify {
+    required int32 code = 1;
+}
+
+message StatusNotify {
+    required int32    userId   = 1;
+    required Equiment equiment = 2;
+    required Status   status   = 3;
+}
+

@@ -88,7 +88,9 @@ func (self *ConnectorPool) createConnector(addr string) error {
 	} else {
 		go func(addr string, conn *goetty.Connector) {
 			for {
-				_, err := conn.Read()
+				data, err := conn.Read()
+				defer p.POOL.Put(data)
+
 				if err != nil {
 					self.CloseConnector(addr, conn)
 					return

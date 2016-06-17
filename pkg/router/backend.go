@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/CodisLabs/codis/pkg/utils/log"
+	"github.com/fagongzi/fastim/pkg/conf"
 	c "github.com/fagongzi/fastim/pkg/connection"
 	p "github.com/fagongzi/fastim/pkg/protocol"
 	"github.com/fagongzi/fastim/pkg/util"
@@ -11,14 +12,14 @@ import (
 
 type Backends struct {
 	sync.RWMutex
-	cnf     *Conf
+	cnf     *conf.RouterConf
 	service *Service
 	server  *goetty.Server
 	tw      *goetty.HashedTimeWheel
 	pool    *c.ConnectorPool
 }
 
-func NewBackends(cnf *Conf, service *Service) *Backends {
+func NewBackends(cnf *conf.RouterConf, service *Service) *Backends {
 	b := &Backends{
 		cnf:     cnf,
 		tw:      util.GetTimeWheel(),
@@ -57,25 +58,33 @@ func (self *Backends) Serve() {
 	}
 }
 
+// never use defer
 func (self *Backends) doServe(session goetty.IOSession) error {
+	var data interface{}
+	var err error
+
 	for {
-		data, err := session.Read()
+		data, err = session.Read()
+
 		if err != nil {
 			log.InfoErrorf(err, "%s read from backend<%s> failure.", util.MODULE_BACKEND, session.RemoteAddr())
-			return err
+			break
 		} else {
 			msg, _ := data.(*p.Message)
 
 			log.Infof("%s id<%s> read a msg<%+v> from backend<%s>", util.MODULE_BACKEND, msg.GetSessionId(), msg, session.RemoteAddr())
 
+			// the msg when used in another goroutine, release shoule be call in that goroutine
 			err = self.service.doFromBackend(msg)
 			if err != nil {
-				log.WarnErrorf(err, "%s id<%d> send msg<%d> to frontend failure", util.MODULE_BACKEND, msg.GetSessionId(), msg.GetSeqId())
+				p.POOL.Put(data)
+				log.WarnErrorf(err, "%s id<%d> send msg<%s> to frontend failure", util.MODULE_BACKEND, msg.GetSessionId(), msg.GetMsgId())
 			}
 		}
 	}
 
-	return nil
+	p.POOL.Put(data)
+	return err
 }
 
 func (self *Backends) writeTimeout(addr string, conn *goetty.Connector) {
@@ -87,9 +96,9 @@ func (self *Backends) createGoettyConf(addr string) *goetty.Conf {
 	return &goetty.Conf{
 		Addr:                   addr,
 		TimeWheel:              self.tw,
-		TimeoutRead:            self.cnf.TimeoutReadFromBackend,
-		TimeoutWrite:           self.cnf.TimeoutWriteToBackend,
-		TimeoutConnectToServer: self.cnf.TimeoutConnectBackend,
+		TimeoutRead:            self.cnf.Timeout.TimeoutRead,
+		TimeoutWrite:           self.cnf.Timeout.TimeoutWrite,
+		TimeoutConnectToServer: self.cnf.Timeout.TimeoutConnect,
 		WriteTimeoutFn:         self.writeTimeout,
 	}
 }

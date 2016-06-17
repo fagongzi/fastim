@@ -19,8 +19,8 @@ type EtcdRegistor struct {
 	pathOfRouters, pathOfRules, pathOfSupports string
 
 	watchCh            chan *etcd.Response
-	evtCh              chan *Evt
 	watchMethodMapping map[EvtSrc]func(EvtType, *etcd.Response) *Evt
+	watchHandler       map[EvtSrc]map[EvtType]func(evt *Evt)
 }
 
 func NewEtcdRegistor(etcdAddrs []string, prefix string) Registor {
@@ -34,6 +34,7 @@ func NewEtcdRegistor(etcdAddrs []string, prefix string) Registor {
 		pathOfSupports: fmt.Sprintf("%s/supports", prefix),
 
 		watchMethodMapping: make(map[EvtSrc]func(EvtType, *etcd.Response) *Evt),
+		watchHandler:       make(map[EvtSrc]map[EvtType]func(evt *Evt)),
 	}
 
 	e.init()
@@ -98,17 +99,17 @@ func (self EtcdRegistor) GetSupports() ([]*model.Support, error) {
 	return supports, nil
 }
 
-func (self EtcdRegistor) RegisterRouter(addr, protolcol string, ttl uint64) error {
+func (self EtcdRegistor) RegisterRouter(router *model.Router, ttl uint64) error {
 	timer := time.NewTicker(time.Second * time.Duration(ttl))
 
 	go func() {
 		for {
 			<-timer.C
-			self.doRegistorRouter(addr, protolcol, ttl)
+			self.doRegistorRouter(router, ttl)
 		}
 	}()
 
-	err := self.doRegistorRouter(addr, protolcol, ttl)
+	err := self.doRegistorRouter(router, ttl)
 
 	if err != nil {
 		return err
@@ -118,8 +119,8 @@ func (self EtcdRegistor) RegisterRouter(addr, protolcol string, ttl uint64) erro
 	return nil
 }
 
-func (self EtcdRegistor) DeregisterRouter(addr, protolcol string) error {
-	key := getRouterKey(self.pathOfRouters, addr, protolcol)
+func (self EtcdRegistor) DeregisterRouter(router *model.Router) error {
+	key := getRouterKey(self.pathOfRouters, router)
 	_, err := self.cli.Delete(key, true)
 
 	if err != nil {
@@ -131,9 +132,18 @@ func (self EtcdRegistor) DeregisterRouter(addr, protolcol string) error {
 	return err
 }
 
-func (self EtcdRegistor) Watch(evtCh chan *Evt, stopCh chan bool) error {
+func (self EtcdRegistor) RegistorWatchHandler(evtSrc EvtSrc, evtType EvtType, handler func(evt *Evt)) {
+	handlers, ok := self.watchHandler[evtSrc]
+	if !ok {
+		handlers = make(map[EvtType]func(evt *Evt))
+		self.watchHandler[evtSrc] = handlers
+	}
+
+	handlers[evtType] = handler
+}
+
+func (self EtcdRegistor) Watch(stopCh chan bool) error {
 	self.watchCh = make(chan *etcd.Response)
-	self.evtCh = evtCh
 
 	log.Infof("%s watch at <%s> from <%s> success.", util.MODULE_REGISTRY, self.prefix, self.etcdAddrs)
 
@@ -146,6 +156,10 @@ func (self EtcdRegistor) Watch(evtCh chan *Evt, stopCh chan bool) error {
 func (self *EtcdRegistor) doWatch() {
 	for {
 		rsp := <-self.watchCh
+
+		if nil == rsp {
+			return
+		}
 
 		var evtSrc EvtSrc
 		var evtType EvtType
@@ -178,10 +192,32 @@ func (self *EtcdRegistor) doWatch() {
 		fn := self.watchMethodMapping[evtSrc]
 
 		if nil != fn {
-			self.evtCh <- self.watchMethodMapping[evtSrc](evtType, rsp)
-		} else {
-			log.Debugf("%s evt src<%+v>, type<%+v>, handler fun not found.", util.MODULE_REGISTRY, evtSrc, evtType)
+			evt := self.watchMethodMapping[evtSrc](evtType, rsp)
+			handler := self.watchHandler[evt.Src][evt.Type]
+
+			if nil != handler {
+				handler(evt)
+				continue
+			}
 		}
+
+		log.Debugf("%s evt src<%+v>, type<%+v>, handler fun not found.", util.MODULE_REGISTRY, evtSrc, evtType)
+	}
+}
+
+func (self *EtcdRegistor) doWatchWithRouter(evtType EvtType, rsp *etcd.Response) *Evt {
+	router := model.UnMarshalRouter([]byte(rsp.Node.Value))
+	key := strings.Replace(rsp.Node.Key, fmt.Sprintf("%s/", self.pathOfRouters), "", 1)
+
+	if router.Addr == "" {
+		router.Protocol, router.Addr = parseRouterKey(key)
+	}
+
+	return &Evt{
+		Src:   EVT_SRC_ROUTER,
+		Type:  evtType,
+		Key:   key,
+		Value: router,
 	}
 }
 
@@ -201,10 +237,10 @@ func (self *EtcdRegistor) doWatchWithSupport(evtType EvtType, rsp *etcd.Response
 	}
 }
 
-func (self *EtcdRegistor) doRegistorRouter(addr, protolcol string, ttl uint64) error {
-	key := getRouterKey(self.pathOfRouters, addr, protolcol)
+func (self *EtcdRegistor) doRegistorRouter(router *model.Router, ttl uint64) error {
+	key := getRouterKey(self.pathOfRouters, router)
 
-	_, err := self.cli.Set(key, "", ttl)
+	_, err := self.cli.Set(key, string(router.Marshal()), ttl)
 
 	if err != nil {
 		log.ErrorErrorf(err, "%s registry <%s> to <%s> failure.", util.MODULE_REGISTRY, key, self.etcdAddrs)
@@ -232,18 +268,25 @@ func (self *EtcdRegistor) doRegistorSupport(support *model.Support, ttl uint64) 
 
 func (self *EtcdRegistor) init() {
 	self.watchMethodMapping[EVT_SRC_SUPPORT] = self.doWatchWithSupport
+	self.watchMethodMapping[EVT_SRC_ROUTER] = self.doWatchWithRouter
 }
 
 func getSupportKey(prefix string, support *model.Support) string {
-	return fmt.Sprintf("%s/%d:%s", prefix, support.Product, util.ConvertToIp(support.Addr))
+	return fmt.Sprintf("%s/%d-%s", prefix, support.Product, util.ConvertToIp(support.Addr))
 }
 
 func parseSupportKey(key string) (int, string) {
-	values := strings.Split(key, ":")
+	values := strings.Split(key, "-")
 	product, _ := strconv.Atoi(values[0])
 	return product, values[1]
 }
 
-func getRouterKey(prefix, addr, protolcol string) string {
-	return fmt.Sprintf("%s/%s:%s", prefix, protolcol, util.ConvertToIp(addr))
+func getRouterKey(prefix string, router *model.Router) string {
+	return fmt.Sprintf("%s/%d-%s", prefix, router.Protocol, util.ConvertToIp(router.Addr))
+}
+
+func parseRouterKey(key string) (model.RouterProtocol, string) {
+	values := strings.Split(key, "-")
+	p, _ := strconv.Atoi(values[0])
+	return model.RouterProtocol(p), values[1]
 }
