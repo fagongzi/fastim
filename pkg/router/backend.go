@@ -96,7 +96,6 @@ func (self *Backends) createGoettyConf(addr string) *goetty.Conf {
 	return &goetty.Conf{
 		Addr:                   addr,
 		TimeWheel:              self.tw,
-		TimeoutRead:            self.cnf.Timeout.TimeoutRead,
 		TimeoutWrite:           self.cnf.Timeout.TimeoutWrite,
 		TimeoutConnectToServer: self.cnf.Timeout.TimeoutConnect,
 		WriteTimeoutFn:         self.writeTimeout,

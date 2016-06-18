@@ -27,7 +27,6 @@ type Server struct {
 
 	tcpServer *goetty.Server
 
-	tw   *goetty.HashedTimeWheel
 	pool *c.ConnectorPool
 
 	registor     registor.Registor
@@ -50,8 +49,6 @@ func NewServer(cnf *conf.ServiceConf, support *model.Support, routing bind.Routi
 		handlers:     make(map[int32]CMDHandler),
 		registor:     registor,
 		syncProtocol: syncProtocol,
-
-		tw: util.GetTimeWheel(),
 
 		queue: make(chan *p.Message, cnf.WriteBufQueueSize),
 
@@ -233,12 +230,8 @@ func (self *Server) createSyncNotify(id string, offset int64) *p.Message {
 
 func (self *Server) createGoettyConf(addr string) *goetty.Conf {
 	return &goetty.Conf{
-		Addr:                   addr,
-		TimeWheel:              self.tw,
-		TimeoutRead:            self.cnf.Timeout.TimeoutRead,
-		TimeoutWrite:           self.cnf.Timeout.TimeoutWrite,
+		Addr: addr,
 		TimeoutConnectToServer: self.cnf.Timeout.TimeoutConnect,
-		WriteTimeoutFn:         nil,
 	}
 }
 

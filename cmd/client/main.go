@@ -20,10 +20,7 @@ func main() {
 	tw.Start()
 
 	c := goetty.NewConnector(&goetty.Conf{
-		Addr:                   *server,
-		TimeWheel:              tw,
-		TimeoutRead:            time.Second * 5,
-		TimeoutWrite:           time.Second * 5,
+		Addr: *server,
 		TimeoutConnectToServer: time.Second * 5,
 	}, p.DECODER, p.ENCODER)
 
